@@ -1,0 +1,152 @@
+function varargout = tspofs_ga(xy, dmat, popSize, numIter, showProg, showResult)
+% tspofs_ga: Algoritmo Genético (AG) para resolver el Problema del Viajante de Comercio (TSP).
+
+% Procesar entradas e inicializar valores predeterminados
+nargs = 6;
+for k = nargin:nargs-1
+    switch k
+        case 0
+            % Si no se proporciona la matriz de coordenadas xy, se crea una aleatoria.
+            xy = 10 * rand(50, 2);
+        case 1
+            % Si no se proporciona la matriz de distancias dmat, se calcula a partir de las coordenadas xy.
+            N = size(xy, 1);
+            a = meshgrid(1:N);
+            dmat = reshape(sqrt(sum((xy(a, :) - xy(a', :)).^2, 2)), N, N);
+        case 2
+            % Si no se proporciona el tamaño de la población, se establece a 100.
+            popSize = 100;
+        case 3
+            % Si no se proporciona el número de iteraciones, se establece a 10000.
+            numIter = 1e4;
+        case 4
+            % Si no se proporciona el indicador para mostrar el progreso, se activa.
+            showProg = 1;
+        case 5
+            % Si no se proporciona el indicador para mostrar el resultado, se activa.
+            showResult = 1;
+        otherwise
+    end
+end
+
+% Verificar entradas
+[N, dims] = size(xy);
+[nr, nc] = size(dmat);
+if N ~= nr || N ~= nc
+    error('¡Entradas XY o DMAT no válidas!')
+end
+n = N - 1; % Se resta 1 para separar la ciudad de inicio.
+
+% Verificaciones adicionales
+popSize = 4 * ceil(popSize / 4);
+numIter = max(1, round(real(numIter(1))));
+showProg = logical(showProg(1));
+showResult = logical(showResult(1));
+
+% Inicializar la población
+pop = zeros(popSize, n);
+pop(1, :) = (1:n) + 1;
+for k = 2:popSize
+    pop(k, :) = randperm(n) + 1;
+end
+
+% Ejecutar el AG
+globalMin = Inf;
+totalDist = zeros(1, popSize);
+distHistory = zeros(1, numIter);
+tmpPop = zeros(4, n);
+newPop = zeros(popSize, n);
+if showProg
+    pfig = figure('Name', 'TSPOFS_GA | Mejor Solución Actual', 'Numbertitle', 'off');
+end
+for iter = 1:numIter
+    % Evaluar cada individuo de la población (calcular distancia total)
+    for p = 1:popSize
+        d = dmat(1, pop(p, 1)); % Agregar la distancia desde el inicio
+        for k = 2:n
+            d = d + dmat(pop(p, k-1), pop(p, k));
+        end
+        totalDist(p) = d;
+    end
+
+    % Encontrar la mejor ruta en la población
+    [minDist, index] = min(totalDist);
+    distHistory(iter) = minDist;
+    if minDist < globalMin
+        globalMin = minDist;
+        optRoute = pop(index, :);
+        if showProg
+            % Graficar la mejor ruta
+            figure(pfig);
+            rte = [1 optRoute];
+            if dims > 2
+                plot3(xy(rte, 1), xy(rte, 2), xy(rte, 3), 'r.-', ...
+                    xy(1, 1), xy(1, 2), xy(1, 3), 'ro');
+            else
+                plot(xy(rte, 1), xy(rte, 2), 'r.-', xy(1, 1), xy(1, 2), 'ro');
+            end
+            title(sprintf('Distancia Total = %1.4f, Iteración = %d', minDist, iter));
+        end
+    end
+
+    % Operadores del Algoritmo Genético
+    randomOrder = randperm(popSize);
+    for p = 4:4:popSize
+        rtes = pop(randomOrder(p-3:p), :);
+        dists = totalDist(randomOrder(p-3:p));
+        [~, idx] = min(dists); 
+        bestOf4Route = rtes(idx, :);
+        routeInsertionPoints = sort(ceil(n * rand(1, 2)));
+        I = routeInsertionPoints(1);
+        J = routeInsertionPoints(2);
+        for k = 1:4 % Mutar el mejor para obtener tres nuevas rutas
+            tmpPop(k, :) = bestOf4Route;
+            switch k
+                case 2 % Invertir
+                    tmpPop(k, I:J) = tmpPop(k, J:-1:I);
+                case 3 % Intercambiar
+                    tmpPop(k, [I J]) = tmpPop(k, [J I]);
+                case 4 % Deslizar
+                    tmpPop(k, I:J) = tmpPop(k, [I+1:J I]);
+                otherwise % No hacer nada
+            end
+        end
+        newPop(p-3:p, :) = tmpPop;
+    end
+    pop = newPop;
+end
+
+if showResult
+    % Graficar los resultados del AG
+    figure('Name', 'TSPOFS_GA | Resultados', 'Numbertitle', 'off');
+    subplot(2, 2, 1);
+    pclr = ~get(0, 'DefaultAxesColor');
+    if dims > 2
+        plot3(xy(:, 1), xy(:, 2), xy(:, 3), '.', 'Color', pclr);
+    else
+        plot(xy(:, 1), xy(:, 2), '.', 'Color', pclr);
+    end
+    title('Ubicación de las Ciudades');
+    subplot(2, 2, 2);
+    imagesc(dmat([1 optRoute], [1 optRoute]));
+    title('Matriz de Distancias');
+    subplot(2, 2, 3);
+    rte = [1 optRoute];
+    if dims > 2
+        plot3(xy(rte, 1), xy(rte, 2), xy(rte, 3), 'r.-', ...
+            xy(1, 1), xy(1, 2), xy(1, 3), 'ro');
+    else
+        plot(xy(rte, 1), xy(rte, 2), 'r.-', xy(1, 1), xy(1, 2), 'ro');
+    end
+    title(sprintf('Distancia Total = %1.4f', minDist));
+    subplot(2, 2, 4);
+    plot(distHistory, 'b', 'LineWidth', 2);
+    title('Historial de la Mejor Solución');
+    set(gca, 'XLim', [0 numIter+1], 'YLim', [0 1.1 * max([1 distHistory])]);
+end
+
+% Devolver salidas
+if nargout
+    varargout{1} = optRoute;
+    varargout{2} = minDist;
+end
